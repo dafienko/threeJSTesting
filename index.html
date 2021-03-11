@@ -37,16 +37,18 @@
                 'varying vec2 vUv;',
 
                 'void main() {',
-                '   gl_FragColor = vec4(texture(blurBuffer, vUv).xyz + texture(geoBuffer, vUv).xyz, 1.0);',
-                //'   gl_FragColor = vec4(texture(tDiffuse, vUv).xyz, 1.0);',
-                //'   gl_FragColor = vec4(vUv.x, 0, vUv.y, 1.0);',
+                '   vec4 geo = texture(geoBuffer, vUv);',
+                '   vec4 blur = texture(blurBuffer, vUv);',
+                '   gl_FragColor = geo + blur;',
                 '}'
             ].join('\n')
         };
 
-        const vBlurShader = {
+        const BlurShader = {
             uniforms: {
-
+                'blurOffset': {value: 1},
+                'c': {value: .8},
+                'blurRadius': {value: 20},
                 'tDiffuse': { value: null },
                 'blurDir': { type: "v2", value: new THREE.Vector2(0, 1) },
                 'screenSize': { type: "v2", value: new THREE.Vector2(800, 600)},
@@ -69,11 +71,11 @@
                 'uniform sampler2D tDiffuse;',
                 'uniform vec2 blurDir;',
                 'uniform vec2 screenSize;',
+                'uniform int blurRadius;',
+                'uniform float c;',
+                'uniform float blurOffset;',
+                
                 'varying vec2 vUv;',
-
-                'const float offsetScale = 1.0f;',
-                'const int blurRadius = 10;',
-                'const float c = .8f;',
 
                 'float Gaussian(float x) {',
                 '    return exp(-(x * x)/(.5 * c * c));',
@@ -92,14 +94,14 @@
                 '        alpha /= float(blurRadius);',
                 '        float weight = Gaussian(alpha);',
                 
-                '        acc += texture(tDiffuse, vUv + dir * float(i) * offsetScale) * weight;',
-                '        acc += texture(tDiffuse, vUv + dir * float(-i) * offsetScale) * weight;',
+                '        acc += texture(tDiffuse, vUv + dir * float(i) * blurOffset) * weight;',
+                '        acc += texture(tDiffuse, vUv + dir * float(-i) * blurOffset) * weight;',
                 
                 '        totalWeight += weight * 2.0f; ',
                 '    }',
                     
                 '    acc /= totalWeight;',
-                '    gl_FragColor = vec4(acc.xyz, 1);',
+                '    gl_FragColor = vec4(2.0 * acc.xyz, 1);',
                 '}',
 
             ].join( '\n' )
@@ -107,30 +109,50 @@
 
         const canvas = document.querySelector('#c');
         const renderer = new THREE.WebGLRenderer({canvas});
-        
+        renderer.antialiase = true;
+
         const fov = 85;
         const aspect = canvas.width / canvas.height;  // the canvas default
         const near = 0.1;
         const far = 250;
         const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
-        
-        
         camera.position.z = 3;
         
         const scene = new THREE.Scene();
         
-        const geometry = new THREE.SphereGeometry(1, 4, 4);
+        const geometry = new THREE.SphereGeometry(1, 2, 2);
         const material = new THREE.MeshBasicMaterial();
-        const numStars = 5000;
+
+
+        const numBackgroundStars = 1000;
+        const backgroundStars = new THREE.InstancedMesh(geometry, material, numBackgroundStars);
+        for (let i = 0; i < numBackgroundStars; i++) {
+            let m = new THREE.Matrix4().setPosition(
+                (Math.random() - .5) * 50,
+                (Math.random() - .5) * 25,
+                -10
+            );
+
+            m.multiply(new THREE.Matrix4().makeScale(.017, .017, .017));
+
+            let c = .8;
+            backgroundStars.setColorAt(i, new THREE.Color(c, c, c));
+            backgroundStars.setMatrixAt(i, m);
+        }
+        backgroundStars.instanceColor.needsUpdate = true;
+        backgroundStars.instanceMatrix.needsUpdate = true;
+
+        const numStars = 10000;
         const objects = new THREE.InstancedMesh(geometry, material, numStars);
                 
         scene.add(objects);
+        scene.add(backgroundStars);
 
-        let galaxyMatrix =  new THREE.Matrix4().setPosition(-.5, -.4, 0);
+        let galaxyMatrix =  new THREE.Matrix4().setPosition(-1.4, -.4, 0);
         galaxyMatrix.multiply(
             new THREE.Matrix4().lookAt(
                 new THREE.Vector3(0, 0, 0), 
-                new THREE.Vector3(4, -8, 10).normalize(), 
+                new THREE.Vector3(6, -10, 10).normalize(), 
                 new THREE.Vector3(0, 1, 0)
             )
         );
@@ -142,13 +164,18 @@
                 this.initTheta = Math.random() * (2 * Math.PI);
                 this.theta = this.initTheta;
                 this.yOff = (Math.random() - .5) * .2;
-                this.color = new THREE.Color( .9 + Math.random() * .1, .8 + Math.random() * .2, .8 + Math.random() * .2);
                 this.speedFactor = Math.random() + 1;
 
                 function getRadius(x) {
-                    return .5 * Math.floor(6.5*x) + Math.pow(Math.random(), 2.5) + Math.sin(x) * .4;
+                    return .5 * Math.floor(8.5*x) + Math.pow(Math.random(), 2.5) + Math.sin(x) * .4;
                 }
-                this.r = getRadius(Math.random());
+                let starAlpha = Math.random();
+                this.r = getRadius(starAlpha);
+
+                let outerColor = new THREE.Color(.66, .66, 1);
+                let innerColor = new THREE.Color(1, .82, .55);
+
+                this.color = innerColor.lerp(outerColor, 1 - Math.pow(1 -starAlpha, 2));
             }
 
             getMatrix() {
@@ -171,35 +198,54 @@
         objects.instanceColor.needsUpdate = true;
 
 
+        const oCamera = new THREE.OrthographicCamera( -1, 1, 1, -1, .1, 1000 );
+        const planeGeo = new THREE.PlaneGeometry( 2, 2, 1, 1 );
+        const combineMat = new THREE.ShaderMaterial( CombineShader);
+        const blurMat = new THREE.ShaderMaterial( BlurShader);
+        const plane = new THREE.Mesh( planeGeo, blurMat );
+        
+        oCamera.position.z = 3;
+        
+        const planeScene = new THREE.Scene();
+        planeScene.add(plane);
+
+
         const effectRenderTarget = new THREE.WebGLRenderTarget(800, 600);
-        const geoRenderTarget = new THREE.WebGLRenderTarget(800, 600);
+        const effectRenderTarget2 = new THREE.WebGLRenderTarget(800, 600);
+        const geoRenderTarget = new THREE.WebGLMultisampleRenderTarget(800, 600);
+        geoRenderTarget.samples = 4;
+        const mainRenderTarget = new THREE.WebGLRenderTarget(800, 600);
 
-        let geoComposer = new EffectComposer( renderer );
-        geoComposer.renderToScreen = false;
-        geoComposer.readBuffer = geoRenderTarget;
-        geoComposer.writeBuffer = geoRenderTarget;
-        geoComposer.addPass( new RenderPass( scene, camera ) );
-        
-        /*
-        let blurComposer = new EffectComposer(renderer);
-        blurComposer.renderToScreen = false;
-        blurComposer.readBuffer = geoRenderTarget;
-        blurComposer.writeBuffer = effectRenderTarget;
-
-        const blurPass = new ShaderPass(vBlurShader);
-        blurComposer.addPass(blurPass);
-        */
-
-        let mainComposer = new EffectComposer( renderer );
-        mainComposer.readBuffer = null;
-        mainComposer.writeBuffer = null;
-        mainComposer.renderToScreen = true;
-
-        CombineShader.uniforms.blurBuffer.value = effectRenderTarget.texture;
         CombineShader.uniforms.geoBuffer.value = geoRenderTarget.texture;
-        let combinePass = new ShaderPass(CombineShader);
-        mainComposer.addPass(combinePass);
-        
+        CombineShader.uniforms.blurBuffer.value = effectRenderTarget2.texture;
+
+        function blurBuffer(buffer, blur1, dest, r, o, c) {
+            BlurShader.uniforms.blurRadius.value = r;
+            BlurShader.uniforms.blurOffset.value = o;
+            BlurShader.uniforms.c.value = c;
+
+            renderer.setRenderTarget(blur1);
+            renderer.clear(false, true, false);
+            plane.material = blurMat;
+            BlurShader.uniforms.blurDir.value = new THREE.Vector2(0, 1);
+            BlurShader.uniforms.tDiffuse.value = buffer.texture;
+            renderer.render(planeScene, oCamera);
+
+            renderer.setRenderTarget(dest);
+            renderer.clear(false, true, false);
+            BlurShader.uniforms.blurDir.value = new THREE.Vector2(1, 0);
+            BlurShader.uniforms.tDiffuse.value = blur1.texture;
+            renderer.render(planeScene, oCamera);
+        }
+
+        function combineBuffers(b1, b2) {
+            plane.material = combineMat;
+            CombineShader.uniforms.geoBuffer.value = b1.texture;
+            CombineShader.uniforms.blurBuffer.value = b2.texture;
+            renderer.render(planeScene, oCamera);
+        }
+
+
         let currentSize = new THREE.Vector2(800, 600);
         function updateSize() {
             let w = window.innerWidth;
@@ -210,23 +256,22 @@
                 canvas.width = w;
                 canvas.height = h;
                 renderer.setSize(w, h);
-                mainComposer.setSize(w, h);
-                //blurComposer.setSize(w, h);
-                geoComposer.setSize(w, h);
-                vBlurShader.uniforms.screenSize.value = new THREE.Vector2(w, h);
+                BlurShader.uniforms.screenSize.value = new THREE.Vector2(w, h);
 
                 camera.aspect = w / h;
                 camera.updateProjectionMatrix();
                 
                 geoRenderTarget.setSize(w, h);
                 effectRenderTarget.setSize(w, h);
+                mainRenderTarget.setSize(w, h);
+                effectRenderTarget2.setSize(w, h);
 
                 currentSize = size;
             }
         }
 
         let lastTime = 0;
-        function render(time) {   
+        function render(time) {
             updateSize();
 
             time *= 0.001;  // convert time to seconds
@@ -235,26 +280,31 @@
 
             for (let i = 0; i < numStars; i++) {
                 let s = stars[i];
-                s.theta += dt * .1 * s.speedFactor;
+                s.theta += dt * .005 * s.speedFactor;
                 let m = s.getMatrix();
 
                 objects.setMatrixAt(i, m);
             }
 
             objects.instanceMatrix.needsUpdate = true;
-        
 
-            //geoComposer.readBuffer = null;
-            //geoComposer.writeBuffer = geoRenderTarget;
-            geoComposer.render(dt);
-            
-            //blurComposer.render();
-            
-            //mainComposer.readBuffer = null;
-            //mainComposer.writeBuffer = null;
-            mainComposer.render(dt);
-
+            renderer.setRenderTarget(geoRenderTarget);
             renderer.clear(false, true, false);
+            renderer.render(scene, camera);
+
+            blurBuffer(geoRenderTarget, effectRenderTarget, effectRenderTarget2, 10, 1, .99);
+
+            renderer.setRenderTarget(null);
+            renderer.clear(false, true, false);
+            combineBuffers(geoRenderTarget, effectRenderTarget2);
+            
+            //blurBuffer(mainRenderTarget, effectRenderTarget, effectRenderTarget2, 0, 2, .9);
+            
+            /*
+            renderer.setRenderTarget(null);
+            renderer.clear(false, true, false);
+            combineBuffers(mainRenderTarget, effectRenderTarget2);
+            //*/
             requestAnimationFrame(render);
         }
         requestAnimationFrame(render);
