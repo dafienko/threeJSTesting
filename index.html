@@ -14,10 +14,7 @@
     
     <script type="module">
         import * as THREE from 'https://threejsfundamentals.org/threejs/resources/threejs/r125/build/three.module.js';
-        import {EffectComposer} from 'https://threejsfundamentals.org/threejs/resources/threejs/r125/examples/jsm/postprocessing/EffectComposer.js';
-        import {RenderPass} from 'https://threejsfundamentals.org/threejs/resources/threejs/r125/examples/jsm/postprocessing/RenderPass.js';
-        import {ShaderPass} from 'https://threejsfundamentals.org/threejs/resources/threejs/r125/examples/jsm/postprocessing/ShaderPass.js';
-    
+        
         const CombineShader = {
             uniforms: {
                 'blurBuffer': { value: null },
