@@ -1,0 +1,333 @@
+<!DOCTYPE html> 
+
+<html>
+    <body style="background-color: black;">
+        <div>
+            <canvas id="c" width=700 height=600 style="position:fixed; top:0;left:0; z-index: -1"></canvas>
+        </div>
+
+        <div style = "position: absolute; bottom: 8px; right: 8px;">
+            <input type="color" id="inner" name="inner" value="#67bfe4" style="border: 0px; background-color: black; width: 20px; height: 20px;">
+            <input type="color" id="outer" name="outer" value="#082872"style="border: 0px; background-color: black; width: 20px; height: 20px;">
+        </div>
+    </body>
+    
+    <script type="module">
+        import * as THREE from 'https://threejsfundamentals.org/threejs/resources/threejs/r125/build/three.module.js';
+        
+        const CombineShader = {
+            uniforms: {
+                'blurBuffer': { value: null },
+                'geoBuffer': { value: null },
+                'tDiffuse': { value: null },
+            },
+
+            vertexShader: [
+                'varying vec2 vUv;',
+
+                'void main() {',
+
+                '	vUv = uv;',
+                '	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );',
+
+                '}'
+            ].join('\n'),
+
+            fragmentShader: [
+                'uniform sampler2D blurBuffer;',
+                'uniform sampler2D geoBuffer;',
+                'uniform sampler2D tDiffuse;',
+
+                'varying vec2 vUv;',
+
+                'void main() {',
+                '   vec4 geo = texture(geoBuffer, vUv);',
+                '   vec4 blur = texture(blurBuffer, vUv);',
+                '   gl_FragColor = geo + blur;',
+                '}'
+            ].join('\n')
+        };
+
+        const BlurShader = {
+            uniforms: {
+                'blurOffset': {value: 1},
+                'c': {value: .8},
+                'blurRadius': {value: 20},
+                'tDiffuse': { value: null },
+                'blurDir': { type: "v2", value: new THREE.Vector2(0, 1) },
+                'screenSize': { type: "v2", value: new THREE.Vector2(800, 600)},
+            },
+
+            vertexShader: [
+
+                'varying vec2 vUv;',
+
+                'void main() {',
+
+                '	vUv = uv;',
+                '	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );',
+
+                '}'
+
+            ].join( '\n' ),
+
+            fragmentShader: [
+                'uniform sampler2D tDiffuse;',
+                'uniform vec2 blurDir;',
+                'uniform vec2 screenSize;',
+                'uniform int blurRadius;',
+                'uniform float c;',
+                'uniform float blurOffset;',
+                
+                'varying vec2 vUv;',
+
+                'float Gaussian(float x) {',
+                '    return exp(-(x * x)/(.5 * c * c));',
+                '}',
+                
+
+                'void main() {',
+                '    vec2 dir = vec2(blurDir.x / screenSize.x, blurDir.y / screenSize.y);',
+                
+                '    float totalWeight = Gaussian(0.0f);',
+                '    vec4 center = texture(tDiffuse, vUv);',
+                '    vec4 acc = center * totalWeight;',
+                
+                '    for (int i = 1; i < blurRadius; i++) {',
+                '        float alpha = float(i);',
+                '        alpha /= float(blurRadius);',
+                '        float weight = Gaussian(alpha);',
+                
+                '        acc += texture(tDiffuse, vUv + dir * float(i) * blurOffset) * weight;',
+                '        acc += texture(tDiffuse, vUv + dir * float(-i) * blurOffset) * weight;',
+                
+                '        totalWeight += weight * 2.0f; ',
+                '    }',
+                    
+                '    acc /= totalWeight;',
+                '    gl_FragColor = vec4(2.0 * acc.xyz, 1);',
+                '}',
+
+            ].join( '\n' )
+        };
+
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+        renderer.antialiase = true;
+
+        const fov = 85;
+        const aspect = canvas.width / canvas.height;  // the canvas default
+        const near = 0.1;
+        const far = 250;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 3;
+        
+        const scene = new THREE.Scene();
+        
+        const geometry = new THREE.SphereGeometry(1, 2, 2);
+        const material = new THREE.MeshBasicMaterial();
+
+        function getInnerColor() {
+            return new THREE.Color(document.getElementById("inner").value);
+        }
+
+        function getOuterColor() {
+            return new THREE.Color(document.getElementById("outer").value);
+        }
+
+        const numBackgroundStars = 1000;
+        const backgroundStars = new THREE.InstancedMesh(geometry, material, numBackgroundStars);
+        for (let i = 0; i < numBackgroundStars; i++) {
+            let m = new THREE.Matrix4().setPosition(
+                (Math.random() - .5) * 50,
+                (Math.random() - .5) * 25,
+                -10
+            );
+
+            m.multiply(new THREE.Matrix4().makeScale(.017, .017, .017));
+
+            let c = .8;
+            backgroundStars.setColorAt(i, new THREE.Color(c, c, c));
+            backgroundStars.setMatrixAt(i, m);
+        }
+        backgroundStars.instanceColor.needsUpdate = true;
+        backgroundStars.instanceMatrix.needsUpdate = true;
+
+        const numStars = 10000;
+        const objects = new THREE.InstancedMesh(geometry, material, numStars);
+                
+        scene.add(objects);
+        scene.add(backgroundStars);
+
+        let galaxyMatrix =  new THREE.Matrix4().setPosition(-1.4, -.4, 0);
+        galaxyMatrix.multiply(
+            new THREE.Matrix4().lookAt(
+                new THREE.Vector3(0, 0, 0), 
+                new THREE.Vector3(6, -10, 10).normalize(), 
+                new THREE.Vector3(0, 1, 0)
+            )
+        );
+
+        class Star {
+            constructor(i) {
+                this.index = i;
+                this.scale = .005 + Math.random() * .005
+                this.initTheta = Math.random() * (2 * Math.PI);
+                this.theta = this.initTheta;
+                this.yOff = (Math.random() - .5) * .2;
+                this.speedFactor = Math.random() + 1;
+
+                function getRadius(x) {
+                    return .5 * Math.floor(8.5*x) + Math.pow(Math.random(), 2.5) + Math.sin(x) * .4;
+                }
+                this.starAlpha = Math.random();
+                this.r = getRadius(this.starAlpha);
+                
+                this.color = new THREE.Color(1, 1, 1);
+            }
+
+            getColor(inner, outer) {
+                return new THREE.Color().lerpColors(inner, outer, 1 - Math.pow(1 - this.starAlpha, 2));
+            }
+
+            getMatrix() {
+                let s = this.scale;
+                let m = galaxyMatrix.clone();
+                m.multiply(new THREE.Matrix4().makeRotationY(this.theta));
+                m.multiply(new THREE.Matrix4().setPosition(0, this.yOff, this.r));
+                m.multiply(new THREE.Matrix4().makeScale(s, s, s));
+
+                return m
+            }   
+        }
+
+        let stars = {};
+        for (let i = 0; i < numStars; i++) {
+            let s = new Star(i);
+            stars[i] = s;
+        }
+
+
+        const oCamera = new THREE.OrthographicCamera( -1, 1, 1, -1, .1, 1000 );
+        const planeGeo = new THREE.PlaneGeometry( 2, 2, 1, 1 );
+        const combineMat = new THREE.ShaderMaterial( CombineShader);
+        const blurMat = new THREE.ShaderMaterial( BlurShader);
+        const plane = new THREE.Mesh( planeGeo, blurMat );
+        
+        oCamera.position.z = 3;
+        
+        const planeScene = new THREE.Scene();
+        planeScene.add(plane);
+
+
+        const effectRenderTarget = new THREE.WebGLRenderTarget(800, 600);
+        const effectRenderTarget2 = new THREE.WebGLRenderTarget(800, 600);
+        const geoRenderTarget = new THREE.WebGLMultisampleRenderTarget(800, 600);
+        geoRenderTarget.samples = 4;
+        const mainRenderTarget = new THREE.WebGLRenderTarget(800, 600);
+
+        CombineShader.uniforms.geoBuffer.value = geoRenderTarget.texture;
+        CombineShader.uniforms.blurBuffer.value = effectRenderTarget2.texture;
+
+        function blurBuffer(buffer, blur1, dest, r, o, c) {
+            BlurShader.uniforms.blurRadius.value = r;
+            BlurShader.uniforms.blurOffset.value = o;
+            BlurShader.uniforms.c.value = c;
+
+            renderer.setRenderTarget(blur1);
+            renderer.clear(false, true, false);
+            plane.material = blurMat;
+            BlurShader.uniforms.blurDir.value = new THREE.Vector2(0, 1);
+            BlurShader.uniforms.tDiffuse.value = buffer.texture;
+            renderer.render(planeScene, oCamera);
+
+            renderer.setRenderTarget(dest);
+            renderer.clear(false, true, false);
+            BlurShader.uniforms.blurDir.value = new THREE.Vector2(1, 0);
+            BlurShader.uniforms.tDiffuse.value = blur1.texture;
+            renderer.render(planeScene, oCamera);
+        }
+
+        function combineBuffers(b1, b2) {
+            plane.material = combineMat;
+            CombineShader.uniforms.geoBuffer.value = b1.texture;
+            CombineShader.uniforms.blurBuffer.value = b2.texture;
+            renderer.render(planeScene, oCamera);
+        }
+
+
+        let currentSize = new THREE.Vector2(800, 600);
+        function updateSize() {
+            let w = window.innerWidth;
+            let h = window.innerHeight;
+
+            let size = new THREE.Vector2(w, h);
+            if (w != currentSize.x || h != currentSize.y) {
+                canvas.width = w;
+                canvas.height = h;
+                renderer.setSize(w, h);
+                BlurShader.uniforms.screenSize.value = new THREE.Vector2(w, h);
+
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+                
+                geoRenderTarget.setSize(w, h);
+                effectRenderTarget.setSize(w, h);
+                mainRenderTarget.setSize(w, h);
+                effectRenderTarget2.setSize(w, h);
+
+                currentSize = size;
+            }
+        }
+
+        let lastTime = 0;
+        let lastOuter = new THREE.Color(1, 1, 1);
+        let lastInner = new THREE.Color(1, 1, 1);
+        function render(time) {
+            updateSize();
+
+            time *= 0.001;  // convert time to seconds
+            let dt = time - lastTime;
+            lastTime = time;
+
+
+            let inner = getInnerColor();
+            let outer = getOuterColor();
+            let colorsChanged = !(lastOuter.equals(outer) && lastInner.equals(inner));
+            for (let i = 0; i < numStars; i++) {
+                let s = stars[i];
+                s.theta += dt * .005 * s.speedFactor;
+                let m = s.getMatrix();
+
+                objects.setMatrixAt(i, m);
+
+                if (colorsChanged) {
+                    let c = s.getColor(inner, outer);
+                    objects.setColorAt(i, c);
+                }
+            }
+            objects.instanceColor.needsUpdate = colorsChanged;
+            objects.instanceMatrix.needsUpdate = true;
+
+            renderer.setRenderTarget(geoRenderTarget);
+            renderer.clear(false, true, false);
+            renderer.render(scene, camera);
+
+            blurBuffer(geoRenderTarget, effectRenderTarget, effectRenderTarget2, 10, 1, .99);
+
+            renderer.setRenderTarget(mainRenderTarget);
+            renderer.clear(false, true, false);
+            combineBuffers(geoRenderTarget, effectRenderTarget2);
+            
+            blurBuffer(mainRenderTarget, effectRenderTarget, effectRenderTarget2, 30, 1.5, .9);
+            
+            //*
+            renderer.setRenderTarget(null);
+            renderer.clear(false, true, false);
+            combineBuffers(mainRenderTarget, effectRenderTarget2);
+            //*/
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    </script>
+</html>
