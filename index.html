@@ -7,92 +7,204 @@
 
     <script type="module">
         import * as THREE from 'https://threejsfundamentals.org/threejs/resources/threejs/r125/build/three.module.js';
-        
+        import {EffectComposer} from 'https://threejsfundamentals.org/threejs/resources/threejs/r125/examples/jsm/postprocessing/EffectComposer.js';
+        import {RenderPass} from 'https://threejsfundamentals.org/threejs/resources/threejs/r125/examples/jsm/postprocessing/RenderPass.js';
+        import {ShaderPass} from 'https://threejsfundamentals.org/threejs/resources/threejs/r125/examples/jsm/postprocessing/ShaderPass.js';
+    
+        const vBlurShader = {
+            uniforms: {
+
+                'tDiffuse': { value: null },
+                'blurDir': { type: "v2", value: new THREE.Vector2(0, 1) },
+                'screenSize': { type: "v2", value: new THREE.Vector2(800, 600)},
+            },
+
+            vertexShader: [
+
+                'varying vec2 vUv;',
+
+                'void main() {',
+
+                '	vUv = uv;',
+                '	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );',
+
+                '}'
+
+            ].join( '\n' ),
+
+            fragmentShader: [
+                'uniform sampler2D tDiffuse;',
+                'uniform vec2 blurDir;',
+                'uniform vec2 screenSize;',
+                'varying vec2 vUv;',
+
+                'const float offsetScale = 1.0f;',
+                'const int blurRadius = 10;',
+                'const float c = .8f;',
+
+                'float Gaussian(float x) {',
+                '    return exp(-(x * x)/(.5 * c * c));',
+                '}',
+                
+
+                'void main() {',
+                '    vec2 dir = vec2(blurDir.x / screenSize.x, blurDir.y / screenSize.y);',
+                
+                '    float totalWeight = Gaussian(0.0f);',
+                '    vec4 center = texture(tDiffuse, vUv);',
+                '    vec4 acc = center * totalWeight;',
+                
+                '    for (int i = 1; i < blurRadius; i++) {',
+                '        float alpha = float(i);',
+                '        alpha /= float(blurRadius);',
+                '        float weight = Gaussian(alpha);',
+                
+                '        acc += texture(tDiffuse, vUv + dir * float(i) * offsetScale) * weight;',
+                '        acc += texture(tDiffuse, vUv + dir * float(-i) * offsetScale) * weight;',
+                
+                '        totalWeight += weight * 2.0f; ',
+                '    }',
+                    
+                '    acc /= totalWeight;',
+                '    gl_FragColor = vec4(acc.xyz, 1);',
+                '}',
+
+            ].join( '\n' )
+        };
+
         const canvas = document.querySelector('#c');
         const renderer = new THREE.WebGLRenderer({canvas});
         
         const fov = 85;
         const aspect = canvas.width / canvas.height;  // the canvas default
         const near = 0.1;
-        const far = 150;
+        const far = 250;
         const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
         
         
-        camera.position.z = 2;
+        camera.position.z = 3;
         
         const scene = new THREE.Scene();
         
-        const boxWidth = 1;
-        const boxHeight = 1;
-        const boxDepth = 1;
-        const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
-        
-        const material = new THREE.MeshPhongMaterial({color: 0x44aa88});
-        const size = 10;
-        const cubes = new THREE.InstancedMesh(geometry, material, size * size * size);
-        
-        const color = 0xFFFFFF;
-        const intensity = 1;
-        const light = new THREE.DirectionalLight(color, intensity);
-        light.position.set(-1, 2, 4);
-        
-        
-        scene.add(cubes);
-        scene.add(light);
-        
+        const geometry = new THREE.SphereGeometry(1, 4, 4);
+        const material = new THREE.MeshBasicMaterial();
+        const numStars = 5000;
+        const objects = new THREE.InstancedMesh(geometry, material, numStars);
+                
+        scene.add(objects);
+
+        let galaxyMatrix =  new THREE.Matrix4().setPosition(-.5, -.4, 0);
+        galaxyMatrix.multiply(
+            new THREE.Matrix4().lookAt(
+                new THREE.Vector3(0, 0, 0), 
+                new THREE.Vector3(4, -8, 10).normalize(), 
+                new THREE.Vector3(0, 1, 0)
+            )
+        );
+
         class Star {
-            constructor() {
-                this.scale = .3 + Math.random() * .5
-                this.theta = Math.random() * 2 * Math.PI;
+            constructor(i) {
+                this.index = i;
+                this.scale = .005 + Math.random() * .005
+                this.initTheta = Math.random() * (2 * Math.PI);
+                this.theta = this.initTheta;
+                this.yOff = (Math.random() - .5) * .2;
+                this.color = new THREE.Color( .9 + Math.random() * .1, .8 + Math.random() * .2, .8 + Math.random() * .2);
+                this.speedFactor = Math.random() + 1;
 
                 function getRadius(x) {
-                    return .5 * Math.floor(Math.pow(1.5, 5 * x) - 1);
+                    return .5 * Math.floor(6.5*x) + Math.pow(Math.random(), 2) + Math.sin(x) * .3;
                 }
                 this.r = getRadius(Math.random());
             }
 
             getMatrix() {
-                let m = THREE.Matrix4();
+                let s = this.scale;
+                let m = galaxyMatrix.clone();
+                m.multiply(new THREE.Matrix4().makeRotationY(this.theta));
+                m.multiply(new THREE.Matrix4().setPosition(0, this.yOff, this.r));
                 m.multiply(new THREE.Matrix4().makeScale(s, s, s));
-                m.multiply(new THREE.Matrix4().makeRotationY(time * .7));
-                m.multiply( new THREE.Matrix4().setPosition((x - size / 2) * scale, (y - size / 2) * scale, (z - size / 2) * scale - 10));
-            }
+
+                return m
+            }   
         }
 
-        function render(time) {
+        let stars = {};
+        for (let i = 0; i < numStars; i++) {
+            let s = new Star(i);
+            stars[i] = s;
+            objects.setColorAt(i, s.color);
+        }
+        objects.instanceColor.needsUpdate = true;
+
+
+        const effectRenderTarget = new THREE.WebGLRenderTarget(800, 600);
+        const geoRenderTarget = new THREE.WebGLRenderTarget(800, 600);
+
+        let geoComposer = new EffectComposer( renderer );
+        geoComposer.readBuffer = null;
+        geoComposer.writeBuffer = geoRenderTarget;
+        geoComposer.addPass( new RenderPass( scene, camera ) );
+        
+
+        let blurComposer = new EffectComposer(renderer);
+        blurComposer.readBuffer = composer.writeBuffer;
+        blurComposer.writeBuffer = effectRenderTarget;
+
+        const blurPass = new ShaderPass(vBlurShader);
+        blurComposer.addPass(blurPass);
+
+
+        let mainComposer = new EffectComposer( renderer );
+        mainComposer.readBuffer = geoComposer.writeBuffer;
+        mainComposer.writeBuffer = null;
+        
+
+        
+        let currentSize = new THREE.Vector2(800, 600);
+        function updateSize() {
             let w = window.innerWidth;
             let h = window.innerHeight;
 
-            canvas.width = w;
-            canvas.height = h;
-            renderer.setSize(w, h);
+            let size = new THREE.Vector2(w, h);
+            if (w != currentSize.x || h != currentSize.y) {
+                canvas.width = w;
+                canvas.height = h;
+                renderer.setSize(w, h);
+                composer.setSize(w, h);
+                vBlurShader.uniforms.screenSize.value = new THREE.Vector2(w, h);
 
-            camera.aspect = w / h;
-            camera.updateProjectionMatrix();
-        
-            time *= 0.001;  // convert time to seconds
-        
-            for (let x = 0; x < size; x++) {
-                for (let y = 0; y < size; y++) {
-                    for (let z = 0; z < size; z++) {
-                        let m = new THREE.Matrix4();
-                        let scale = 2
-                        let s = .2;
-                        m.setPosition((x - size / 2) * scale, (y - size / 2) * scale, (z - size / 2) * scale - 10);
-                        m.multiply(new THREE.Matrix4().makeRotationY(time * .7));
-                        m.multiply(new THREE.Matrix4().makeRotationX(time * .7));
-                        m.multiply(new THREE.Matrix4().makeScale(s, s, s));
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+                
+                geoRenderTarget.setSize(w, h);
+                effectRenderTarget.setSize(w, h);
 
-                        let index = x * size * size + y * size + z;
-                        //console.log(index);
-                        cubes.setMatrixAt(index, m);
-                        cubes.instanceMatrix.needsUpdate = true;
-                    }
-                }
+                currentSize = size;
             }
+        }
+
+        let lastTime = 0;
+        function render(time) {   
+            updateSize();
+
+            time *= 0.001;  // convert time to seconds
+            let dt = time - lastTime;
+            lastTime = time;
+
+            for (let i = 0; i < numStars; i++) {
+                let s = stars[i];
+                s.theta += dt * .1 * s.speedFactor;
+                let m = s.getMatrix();
+
+                objects.setMatrixAt(i, m);
+            }
+
+            objects.instanceMatrix.needsUpdate = true;
         
-            renderer.render(scene, camera);
-        
+            //renderer.render(scene, camera);
+            composer.render();
+
             requestAnimationFrame(render);
         }
         requestAnimationFrame(render);
