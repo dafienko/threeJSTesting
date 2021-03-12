@@ -156,8 +156,11 @@
                 new THREE.Vector3(0, 1, 0)
             )
         );
+        galaxyMatrix.multiply(
+            new THREE.Matrix4().makeScale(1.5, .8, 1)
+        );
 
-        let numSpirals = 5;
+        let numSpirals = 2;
 
         class Star {
             constructor(i) {
@@ -166,12 +169,12 @@
                 this.starAlpha = Math.random();
                 let spiralNum = Math.floor(Math.random() * numSpirals);
                 this.spiral = spiralNum;
-                let initTheta = this.starAlpha * (2 * Math.PI);
                 this.yOff = (Math.random() - .5) * .2;
                 this.speedFactor = Math.random() + 1;
                 
+                let initTheta = this.starAlpha * 4 * Math.PI;
                 let offset = 2 * Math.PI * (spiralNum / numSpirals);
-                let r = Math.pow(initTheta * .8, 1.2) + Math.pow(Math.random(), 2) * .5;
+                let r = .3 * Math.pow(initTheta * .7, 1.2) + Math.sign(Math.random() - .5) * Math.pow(Math.random(), 2) * .45;
                 
                 this.theta = initTheta - offset;
                 this.r = r;
@@ -289,7 +292,7 @@
             let colorsChanged = !(lastOuter.equals(outer) && lastInner.equals(inner));
             for (let i = 0; i < numStars; i++) {
                 let s = stars[i];
-                s.theta += dt * .005 * s.speedFactor;
+                s.theta -= dt * .005 * s.speedFactor;
                 let m = s.getMatrix();
 
                 objects.setMatrixAt(i, m);
