@@ -157,20 +157,24 @@
             )
         );
 
+        let numSpirals = 5;
+
         class Star {
             constructor(i) {
                 this.index = i;
                 this.scale = .005 + Math.random() * .005
-                this.initTheta = Math.random() * (2 * Math.PI);
-                this.theta = this.initTheta;
+                this.starAlpha = Math.random();
+                let spiralNum = Math.floor(Math.random() * numSpirals);
+                this.spiral = spiralNum;
+                let initTheta = this.starAlpha * (2 * Math.PI);
                 this.yOff = (Math.random() - .5) * .2;
                 this.speedFactor = Math.random() + 1;
-
-                function getRadius(x) {
-                    return .5 * Math.floor(8.5*x) + Math.pow(Math.random(), 2.5) + Math.sin(x) * .4;
-                }
-                this.starAlpha = Math.random();
-                this.r = getRadius(this.starAlpha);
+                
+                let offset = 2 * Math.PI * (spiralNum / numSpirals);
+                let r = Math.pow(initTheta * .8, 1.2) + Math.pow(Math.random(), 2) * .5;
+                
+                this.theta = initTheta - offset;
+                this.r = r;
                 
                 this.color = new THREE.Color(1, 1, 1);
             }
