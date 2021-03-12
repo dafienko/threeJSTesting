@@ -1,17 +1,6 @@
 <!DOCTYPE html> 
 
-<html>
-    <body style="background-color: black;">
-        <div>
-            <canvas id="c" width=700 height=600 style="position:fixed; top:0;left:0; z-index: -1"></canvas>
-        </div>
-
-        <div style = "position: absolute; bottom: 8px; right: 8px;">
-            <input type="color" id="inner" name="inner" value="#67bfe4" style="border: 0px; background-color: black; width: 20px; height: 20px;">
-            <input type="color" id="outer" name="outer" value="#082872"style="border: 0px; background-color: black; width: 20px; height: 20px;">
-        </div>
-    </body>
-    
+<html>    
     <script type="module">
         import * as THREE from 'https://threejsfundamentals.org/threejs/resources/threejs/r125/build/three.module.js';
         
@@ -326,8 +315,26 @@
             renderer.clear(false, true, false);
             combineBuffers(mainRenderTarget, effectRenderTarget2);
             //*/
-            requestAnimationFrame(render);
+            if (document.getElementById("render").checked) {
+                requestAnimationFrame(render);
+            }
         }
         requestAnimationFrame(render);
+
+        document.getElementById("render").addEventListener("click", function() {
+            requestAnimationFrame(render);
+        })
     </script>
+
+    <body style="background-color: black;">
+        <div>
+            <canvas id="c" width=700 height=600 style="position:fixed; top:0;left:0; z-index: -1"></canvas>
+        </div>
+
+        <div style = "position: absolute; bottom: 8px; right: 8px;">
+            <input type="color" id="inner" name="inner" value="#67bfe4" style="border: 0px; background-color: black; width: 20px; height: 20px;">
+            <input type="color" id="outer" name="outer" value="#082872"style="border: 0px; background-color: black; width: 20px; height: 20px;">
+            <input type="checkbox" name="render" id="render" value="Render" checked="true">
+        </div>
+    </body>
 </html>
