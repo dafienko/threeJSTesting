@@ -142,7 +142,7 @@
         backgroundStars.instanceColor.needsUpdate = true;
         backgroundStars.instanceMatrix.needsUpdate = true;
 
-        const numStars = 10000;
+        const numStars = 12000;
         const objects = new THREE.InstancedMesh(geometry, material, numStars);
                 
         scene.add(objects);
@@ -174,7 +174,7 @@
                 
                 let initTheta = this.starAlpha * 4 * Math.PI;
                 let offset = 2 * Math.PI * (spiralNum / numSpirals);
-                let r = .3 * Math.pow(initTheta * .7, 1.2) + Math.sign(Math.random() - .5) * Math.pow(Math.random(), 2) * .45;
+                let r = .3 * Math.pow(initTheta * .7, 1.2) + Math.sign(Math.random() - .5) * Math.pow(Math.random(), 1.85) * .55;
                 
                 this.theta = initTheta - offset;
                 this.r = r;
