@@ -292,7 +292,7 @@
             let colorsChanged = !(lastOuter.equals(outer) && lastInner.equals(inner));
             for (let i = 0; i < numStars; i++) {
                 let s = stars[i];
-                s.theta -= dt * .005 * s.speedFactor;
+                s.theta -= dt * .005; // * s.speedFactor;
                 let m = s.getMatrix();
 
                 objects.setMatrixAt(i, m);
