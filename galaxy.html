@@ -183,7 +183,9 @@
             }
 
             getColor(inner, outer) {
-                return new THREE.Color().lerpColors(inner, outer, 1 - Math.pow(1 - this.starAlpha, 2));
+                let max = .3 * Math.pow(2.8 * Math.PI, 1.2) + .55;
+                let alpha = this.r / max;
+                return new THREE.Color().lerpColors(inner, outer, 1 - Math.pow(1 - alpha, 3));
             }
 
             getMatrix() {
